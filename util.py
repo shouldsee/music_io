@@ -59,16 +59,21 @@ class piece(object):
         ts = self.t0[tmin:tmax]
         xs = self.x0[tmin:tmax]
         return [ts,xs]
-    def cwt(self, t1,t2):       
-        self.scale = np.arange(1,129)
+    def cwt(self, t1,t2, scale = None, postFunc =  lambda x:x):       
+        # if isinstance(postFunc, None):
+        #     postFunc = lambda x:x
+        if isinstance(scale, type(None)):
+            scale = np.arange(1,129)
+        self.scale = scale
 #         self.scale = np.arange(1,100)
         tmax = 0.1
         ts,xs = self.trimto(t1,t2)
 #         xs = xs/ np.std(xs)
 #         self.ts
         coef = mlpywt.cwt( xs, 1, self.scale, wf = self.motherwave, p=2 )
+        coef = postFunc(coef)
         self.coef = coef
-        return np.real(coef)
+        return coef
     def icwt(self, ts = None , coef = None, scale = None):
         if isinstance(scale, type(None)):
             scale = self.scale
@@ -93,7 +98,7 @@ class piece(object):
 #         x, y = self.trimto(t1,t2)
 #         mlpywt.cwt(self.x0, self.t0[1]-self.t0[0], scale, wf='morlet', )        
     def plot(self,t1,t2, alias = None, lineonly = 0, show = 1, save = 1,
-            coef = None ):
+            coef = None, **kwargs):
         if alias:
             self.alias = alias  
         scale = np.arange(1,257)
@@ -114,7 +119,7 @@ class piece(object):
         ax1.set_xlim([min(x),max(x)])
         if not lineonly:
             if isinstance( coef, type(None)):
-                coef = self.cwt( t1,t2  )
+                coef = self.cwt( t1,t2 , **kwargs)
 #                 coef, freqs=pywt.cwt( y, scale, self.motherwave)
             
                 self.coef = coef
