@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import os
 import IPython.display as ipd
 from IPython.display import display_html as HTML
-# import mlpy.wavelet as mlpywt
-
+import mlpy.wavelet as mlpywt
+# from types import NoneType
+NoneType = type(None)
 class piece(object):
     def __init__(self, fname, alias = 'test',dirname = '', ):
         self.dirname = ''
@@ -32,7 +33,8 @@ class piece(object):
 #         self.meta = {'bitrate':bitrate}
         self.bitrate = bitrate
         self.x0 = x0
-        self.t0 = np.arange(0,x0.size)/float(bitrate)    
+        self.t0 = np.arange(0,x0.size)/float(bitrate)  
+        self.xs = x0  
     def save(self, fname):
         f_abs = os.path.join( self.dirname, fname)
         scipy.io.wavfile.write( f_abs, self.bitrate, self.x0, )
@@ -50,7 +52,7 @@ class piece(object):
         return coef
 #         self.coef = coef
 #         return coef
-    def trimto(self,t1 = None,t2 = None):
+    def trimto(self, t1 = None, t2 = None):
         if not t1:
             tmin = 0
         else:
@@ -63,39 +65,58 @@ class piece(object):
 #         tmax = int(self.bitrate * t2)
         ts = self.t0[tmin:tmax]
         xs = self.x0[tmin:tmax]
+        self.xs = xs
+        self.ts = ts
         return [ts,xs]
-    def cwt(self, t1,t2, scale = None, postFunc =  lambda x:x):       
+    def downsample(self, bitrate):
+        idx = np.arange(0,len(self.t0), self.bitrate/bitrate).astype('int')
+        self.t0 = self.t0[idx]
+        self.x0 = self.x0[idx]
+        self.bitrate = bitrate
+    def cwt(self, t1,t2,  scale = None, xs = None, postFunc =  lambda x:x, p = 20):       
         # if isinstance(postFunc, None):
         #     postFunc = lambda x:x
         if isinstance(scale, type(None)):
-            scale = np.arange(1,129)
-
+            scale = np.arange(1,129)       
         self.scale = scale
+        # self.freqs = 1. / self.scale * p
+        self.freqs = 1. / self.scale * p
+        # self.freqs = self.bitrate / self.scale
+
 #         self.scale = np.arange(1,100)
-        tmax = 0.1
-        ts,xs = self.trimto(t1,t2)
+        # tmax = 0.1
+
+        if isinstance( xs, type(None)):
+            ts,xs = self.trimto(t1,t2)
+        # ts,xs = self.trimto(t1,t2)
+            
 #         xs = xs/ np.std(xs)
 #         self.ts
-        wavelet = pywt.ContinuousWavelet( self.motherwave, )
-        wavelet.center_frequency = 1
-        coef, freqs = pywt.cwt( xs, scale,  wavelet,
-            sampling_period = self.bitrate,
-            # sampling_period = 1./self.bitrate,
-            )
+
+        # wavelet = pywt.ContinuousWavelet( self.motherwave, )
+        # wavelet.center_frequency = 1
+        # coef, freqs = pywt.cwt( xs, scale,  wavelet,
+        #     # sampling_period = self.bitrate,
+        #     sampling_period = 1./self.bitrate,
+        #     )
+
         # coef = scipy.signal.cwt(xs, getattr(scipy.signal,self.motherwave),
         # widths = self.scale,  )
-        # coef = mlpywt.cwt( xs, 1, self.scale, wf = self.motherwave, p=2 )
+        coef = mlpywt.cwt( xs, 1./self.bitrate, self.scale, wf = self.motherwave, p = p )
+        # coef = mlpywt.cwt( xs, 1, self.scale, wf = self.motherwave, p = p )
         coef = postFunc(coef)
+        freqs = None
         self.coef = coef
-        return coef
-    def icwt(self, ts = None , coef = None, scale = None):
+        # self.freqs= freqs
+        return coef,freqs
+    def icwt(self, ts = None , coef = None, scale = None, p = 20):
         if isinstance(scale, type(None)):
             scale = self.scale
 #         if isinstance(coef, type(None)):
 #             coef = self.coef
         if isinstance( ts, type(None)):
             ts = self.ts
-        xs = mlpywt.icwt( np.real(coef), 1, scale, wf = self.motherwave, p=2 )
+        xs = mlpywt.icwt( np.real(coef), 1./self.bitrate, scale, wf = self.motherwave, p = p  )
         return [ts,xs]        
 
     def old_cwt(self, t1, t2):
@@ -105,20 +126,37 @@ class piece(object):
 #         y = self.x0[tmin:tmax]
         x, y = self.trimto(t1,t2)
         scale = np.arange(1,129)
+        # scale = np.linspace(1,1000,100)
         coef, freqs=pywt.cwt( y, scale, self.motherwave)
         self.coef = coef
         return coef
 #         scale = np.arange(1,128)
 #         x, y = self.trimto(t1,t2)
-#         mlpywt.cwt(self.x0, self.t0[1]-self.t0[0], scale, wf='morlet', )        
+#         mlpywt.cwt(self.x0, self.t0[1]-self.t0[0], scale, wf='morlet', )
+    def set_pdir(self, pdir = None):
+        if isinstance(pdir, type(None)):
+            pdir = 'gallery/'
+        assert os.path.isdir(pdir)
+
+        self.pdir = pdir        
     def plot(self,t1,t2, alias = None, lineonly = 0, show = 1, save = 1,
             coef = None,
             log = 1,
+            dpi = 300,
+            big = 0,
+            ofreqs = None,
              **kwargs):
         if alias:
             self.alias = alias  
+        if not getattr(self, 'pdir'):
+            self.set_pdir()
+        if not isinstance(ofreqs, NoneType):
+            freqs = ofreqs
+        else:
+            freqs = self.freqs
         # scale = np.arange(1,257)
-        pdir = 'gallery/'
+        # if isinstance(pdir, type(None)):
+        #     self.pdir = 'gallery/'
 
         self.bfname = os.path.basename(self.fname).split('.')[0]
         title = '%s_%s' % ( self.bfname, self.alias) 
@@ -128,15 +166,9 @@ class piece(object):
         y = self.x0[tmin:tmax]
 
 
-        fig = plt.figure(figsize = [10,10])
-        ax1 = plt.subplot(311)
-        ax2 = plt.subplot(312)        
-        ax3 = plt.subplot(313)
-        ax1.plot(x,y)
-        ax1.set_xlim([min(x),max(x)])
         if not lineonly:
             if isinstance( coef, type(None)):
-                coef = self.cwt( t1,t2 , **kwargs)
+                coef, _ = self.cwt( t1,t2 , **kwargs)
 #                 coef, freqs=pywt.cwt( y, scale, self.motherwave)
             
                 self.coef = coef
@@ -145,10 +177,10 @@ class piece(object):
                 im = np.log10( 1 + 10*abs(coef))
             else:
                 im = coef
-            f_im = ax2.pcolormesh( x, self.scale, im)
-            fig.colorbar(f_im)
-            ax3.plot( 10 * np.mean(im, axis = 1)  , self.scale)
-            ax3.set_xlim(right = 0.05)
+            # f_im = ax2.pcolormesh( x, self.freqs * self.bitrate , im)
+            # f_im = ax2.pcolormesh( x, np.log10(self.freqs)  , im)
+            # ax3.plot( 10 * np.mean(im, axis = 1)  , self.scale)
+            # ax3.set_xlim(right = 0.05)
 #             ax2.pcolormesh( x, self.scale, np.log10( abs(coef)))
         
 #             ax2.pcolormesh( x, self.scale, np.log10(1 + 10*abs(coef)))
@@ -156,19 +188,43 @@ class piece(object):
 #         extent = [min(x),max(x),min(self.scale),max(self.scale),]
         # ax2.imshow( x, scale, coef)
 #         plt.tight_layout()
-        ax1.set_title(title)
+
+        fig = plt.figure(figsize = [10,10])
+        if big:
+            ax2 = plt.subplot(111)
+        else:
+            ax1 = plt.subplot(311)
+            ax2 = plt.subplot(312)        
+            ax3 = plt.subplot(313)
+            ax1.plot(x,y)
+            ax1.set_xlim([min(x),max(x)])
+
+        f_im = ax2.pcolormesh( x, freqs  , im) 
+        ax2.set_yscale('log')
+        fig.colorbar(f_im)
+        try:
+            ax3.plot(  np.log10(self.scale), np.log10(freqs) ,)
+            ax1.set_title(title)
+        except:
+            print "doing big plot"
         if save:
 #             plt.savefig('gallery/' + title + '.png' , )
-            fig.savefig( pdir + title + '.png', dpi = 300)
+            fig.savefig( self.pdir + title + '.png', dpi = dpi )
         if not show:
             fig.set_visible(False)
-            plt.close(fig)
+        plt.close(fig)
+        # else
+
 #             fig.close()
 #             plt.hide(fig)
 #             plt.show() 
     def play(self,t1 = None, t2 = None):
-        ts,xs = self.trimto(t1,t2)       
-        obj = ipd.Audio(xs, rate = self.bitrate)     
+        if t1 is None or t2 is None:
+            xs = self.xs
+        else:
+            ts,xs = self.trimto( t1, t2)
+
+        obj = ipd.Audio( xs , rate = self.bitrate)     
         return HTML(obj)
     def extract(self,t1,t2):
         ts, xs =p.trimto( t1, t2 )
