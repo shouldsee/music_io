@@ -455,8 +455,8 @@ def midi_merge(*args):
     args = [np.lib.pad( x, ((0,LEN - len(x)),(0,0)), 'constant', constant_values=[0.]) for x in args]
     return np.vstack([x[None,:] for x in args]).max(axis = 0)
 
-def plot_midi_roll(mroll):
-    plt.figure(figsize = [15,6])
+def plot_midi_roll(mroll, **kwargs):
+    plt.figure(figsize = [15,6],**kwargs)
     if len(mroll)!=128:
         mroll = mroll.T
     plt.pcolormesh(mroll)
@@ -491,6 +491,11 @@ def extract_midi_roll(filename, sample_dt = 0.05, DEBUG = True):
     except Exception as e:
         print e
         return None
+
+def norm_by_rmsq(chunks):
+    OUT = chunks/np.sqrt(np.mean( np.power(chunks,2),axis = 1,keepdims=1))
+#     OUT = np.nan_to_num(OUT)
+    return OUT
 
 if __name__=='__main__':
     fname = 'sample/MIDI/composer-bach-edition-bg-genre-cant-work-0002-format-midi1-multi-zip-number-01.mid'
