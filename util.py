@@ -271,6 +271,20 @@ class piece(object):
         
         ts ,xs = p.icwt( ts, coef = ccoef )
         return [ts,xs]
+    
+    def downsample(self,new_rate):
+        ratio = self.bitrate/new_rate
+        idx = np.arange(0, len(self.t0) ,ratio).astype(int)
+        self.x0 = self.x0[idx]
+        self.xs = self.x0[:]
+        self.t0 = np.arange(0,len(idx)) * 1./new_rate
+        self.bitrate = new_rate 
+
+    def to_chunk(self,new_rate):
+        ratio = self.bitrate/new_rate
+        idx = np.arange(0, len(self.t0) ,ratio).astype(int)
+        print len(idx)
+        return np.split(self.x0, idx[1:])
 
 
 from scipy.ndimage.filters import maximum_filter
@@ -310,3 +324,174 @@ def detect_peaks(image, rx = 2, ry = 10  ):
 
     return detected_peaks
         
+
+
+####### MIDI utilities
+
+import mido
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+import StringIO
+def track2midi(track, sample_dt = 0.05,ticks_per_beat = None,TEMPO = None,stdout = StringIO.StringIO(),**kwargs):
+    signal_0 = [0]*128
+    sample_intick = mido.second2tick( sample_dt,ticks_per_beat,TEMPO)
+    LENGTH = int(time_track(track) // sample_intick) + 1 
+    OUTPUT = [signal_0 ]* LENGTH
+
+#     track.ONOFF = detect_format(track)
+    it = (x for x in track)
+    
+    isMETA = 1
+    while True:
+        msg = next(it,None)
+        if msg is None:
+            omsg = "[WARN]:No notes were detected in %s" % track[0]
+            print omsg
+            return None
+#             raise Exception( )
+#     for msg in it:  
+        if isMETA:        
+            if msg.type =="note_on":
+                assert TEMPO is not None, "Cannot determine tempo"
+                print >>stdout, msg
+    #             print msg.time
+                isMETA=0
+                break
+
+    t_curr = 0.
+    t_track= msg.time
+    
+    signal = receive(signal_0,msg)
+    signal_new = signal
+    print >>stdout,"============"
+
+
+
+    for i in range(len(OUTPUT)):
+#         if not isMETA:
+#     #         mtype = msg.type
+#             if track.ONOFF == 'OnOnly':
+#                 if msg.type == "note_on" and msg.velocity==0:
+#                     msg.__dict__['type'] = "note_off"                
+        print >>stdout,sum(signal)
+        OUTPUT[i] = signal[:]
+        t_curr += sample_intick
+    #     t_new = t_curr + sample_intick    
+    #     while t_new > t_track and msg:
+        print >>stdout,t_curr,t_track
+        print >>stdout,(t_curr > t_track)
+    #     print (t_curr > t_track) & (msg is not None)
+        if t_curr > t_track:
+            signal = signal_new
+#             signal_new = signal
+
+        flipped = False
+        while (t_curr > t_track) & (msg is not None):
+            msg = next(it, msg)
+            print >> stdout, msg
+            if msg.type =='end_of_track':
+                break
+#             if not msg:
+#                 break
+            t_track += msg.time
+            if t_curr > t_track:
+                signal = receive(signal,msg)
+            else:
+                if not flipped:
+                    signal_new = signal
+                    flipped = True
+                signal_new = receive(signal,msg)
+            print >>stdout,t_curr,t_track
+    OUTPUT = np.array(OUTPUT)
+    return OUTPUT     
+
+if __name__=='__test__':
+    mroll = track2midi(track,TEMPO=mid.TEMPO,ticks_per_beat= mid.ticks_per_beat)     
+    plot_midi_roll(mroll)
+
+def time_track(track):
+    return( sum(msg.time for msg in track))
+# def time_
+# time_track(track)
+# for track in mid.tracks:
+#     track.time = time_track(track)
+# MAX_TICK = max(t.time for t in mid.tracks)
+
+
+def receive(signal,msg):
+    signal = signal[:]
+    if msg.type=='note_on':
+        if msg.velocity ==0:
+            signal[msg.note]=0
+        else:
+            signal[msg.note]=1
+    elif msg.type=='note_off':
+        signal[msg.note]=0
+    else:
+#         print "[WARN]'%s' msg is not recognised" % msg
+        assert 0,"[ERROR]'%s' msg is not recognised" % msg
+    return signal
+def get_tempo(mid):
+    for track in mid.tracks:
+        for msg in track:    
+            if msg.type =="set_tempo":
+                TEMPO=msg.tempo
+                return TEMPO
+            if msg.time != 0:
+                break
+    raise Exception("Cannot find tempo for %s" % mid)
+
+    
+def midi_merge(*args):
+    for e in args:
+        assert e.shape[-1] == 128," Make sure shape fits"
+    if not args:
+        return None
+    
+    args = [x for x in args if len(x) > 10]    
+    LEN = max(len(x) for x in args)
+    args = [np.lib.pad( x, ((0,LEN - len(x)),(0,0)), 'constant', constant_values=[0.]) for x in args]
+    return np.vstack([x[None,:] for x in args]).max(axis = 0)
+
+def plot_midi_roll(mroll):
+    plt.figure(figsize = [15,6])
+    if len(mroll)!=128:
+        mroll = mroll.T
+    plt.pcolormesh(mroll)
+    
+    
+# plot_midi_roll(mroll)
+
+def extract_midi_roll(filename, sample_dt = 0.05, DEBUG = True):
+    '''
+    Sample a midi file into a 128-bit stream at given rate. 
+    Input:
+        filename: path to midi file
+        sample_dt: interval in seconds
+
+    Return:
+        Numpy array of the shape ( time, 128 )  (midi encodes 128 pitches)
+        NoneType if failed
+    '''
+    mid = mido.MidiFile(filename)
+    mid.TEMPO = get_tempo(mid)
+    lst = []
+    try:
+        for track in mid.tracks:
+            mroll = track2midi(track, sample_dt = sample_dt, TEMPO=mid.TEMPO,ticks_per_beat= mid.ticks_per_beat)
+            if mroll is not None:
+        #         plot_midi_roll(mroll)
+                lst.append(mroll)
+        OUTPUT = midi_merge(*lst)
+        if DEBUG:
+            plot_midi_roll(OUTPUT)
+        return OUTPUT
+    except Exception as e:
+        print e
+        return None
+
+if __name__=='__main__':
+    fname = 'sample/MIDI/composer-bach-edition-bg-genre-cant-work-0002-format-midi1-multi-zip-number-01.mid'
+    extract_midi_roll(fname)
