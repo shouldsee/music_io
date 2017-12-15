@@ -284,7 +284,7 @@ class piece(object):
         ratio = self.bitrate/new_rate
         idx = np.arange(0, len(self.t0) ,ratio).astype(int)
         print len(idx)
-        return np.split(self.x0, idx[1:])
+        return np.array(np.split(self.x0, idx[1:])[:-1])
 
 
 from scipy.ndimage.filters import maximum_filter
